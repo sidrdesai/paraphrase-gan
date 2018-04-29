@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from keras.layers import Input, Dense, Embedding, LSTM, concatenate, Lambda, RepeatVector
+from keras.layers import Input, Dense, Embedding, LSTM, concatenate, Lambda
 import keras.backend as kbe
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
@@ -57,8 +57,7 @@ class GAN():
         x = LSTM(self.embedding_vector_length,return_sequences=True)(x)
         x = Lambda(lambda s: s[:,15:,:])(x)
         x = Dense(self.vocabulary_size,activation='softmax')(x)
-        # need some way to convert to one hot vector
-        # x = Lambda(lambda s:kbe.max(s,axis=-1))(x)
+        x = Lambda(lambda s: kbe.cast(kbe.argmax(s,axis=-1),'float'))(x)
 
         model = Model(s1,x)
         model.summary()
