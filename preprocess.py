@@ -1,4 +1,5 @@
 import random
+import numpy as np
 
 class ProcessData:
 	def __init__(self):
@@ -32,7 +33,7 @@ class ProcessData:
 							self.vocabulary_counts[word] = 1
 		counter = 0
 		for key, value in self.vocabulary_counts.items():
-			if value > 1:
+			if value > 2:
 				self.working_vocabulary[key] = counter
 				self.working_vocabulary_inverse.append(key)
 				counter += 1
@@ -40,44 +41,41 @@ class ProcessData:
 		self.paraphrase_blocks_length = len(self.paraphrase_blocks);
 
 	#word to one hot vector length of the vocab
-	def word_to_one_hot(self, word):
+	def word_to_index(self, word):
 		# 1 extra for unk, one extra for *PAD*
-		to_return = [0]*(len(self.working_vocabulary) + 2)
 		if word == "*PAD*":
-			to_return[len(to_return) - 1] = 1
-			return to_return
+			return len(self.working_vocabulary) + 1
 
 		if word in self.working_vocabulary:
-			to_return[self.working_vocabulary[word]] = 1
-			return to_return
+			return self.working_vocabulary[word]
 		else:
-			to_return[len(to_return) - 2] = 1
-			return to_return
+			return len(self.working_vocabulary)
 
 	# back from one hot to word
-	def one_hot_to_word(self, one_hot):
-		ind = one_hot.index(1)
-		if ind == len(self.working_vocabulary) + 1:
+	def index_to_word(self, index):
+		if index == len(self.working_vocabulary) + 1:
 			return "*PAD*"
-		if ind == len(self.working_vocabulary):
+		if index == len(self.working_vocabulary):
 			return "*UNK*"
-		return self.working_vocabulary_inverse[ind]
+		return self.working_vocabulary_inverse[index]
 
-	#string to list of onehot vectors size of working vocab, length is 15 with padding
-	def sentence_to_onehot(self, sentence):
+	#string to list of indices in working vocab, length is 15 with padding
+	def sentence_to_indices(self, sentence):
 		arr = sentence.split()
-		one_hots = list(map(lambda w : self.word_to_one_hot(w), arr))
-		if len(one_hots) < 15:
-			one_hots = one_hots + [self.word_to_one_hot("*PAD*")]*(15-len(one_hots))
-		return one_hots
+		indices = map(lambda w : self.word_to_index(w), arr)
+		if len(indices) < 15:
+			indices = indices + [self.word_to_index("*PAD*")]*(15-len(indices))
+		return indices
 
 	def get_random_positive_batch(self, batch_size):
-		batch = []
+		batch1 = []
+		batch2 = []
 		for i in range(batch_size):
 			block = random.sample(self.paraphrase_blocks, 1)
 			samp = random.sample(block[0], 2)
-			batch.append((self.sentence_to_onehot(samp[0]),self.sentence_to_onehot(samp[1])))
-		return batch
+			batch1.append(self.sentence_to_indices(samp[0]))
+			batch2.append(self.sentence_to_indices(samp[1]))
+		return [np.array(batch1),np.array(batch2)]
 
 	def get_random_negative_batch(self, batch_size):
 		batch = []
@@ -85,25 +83,26 @@ class ProcessData:
 			blocks = random.sample(self.paraphrase_blocks,2)
 			samp1 = random.sample(blocks[0],1)
 			samp2 = random.sample(blocks[1],1)
-			batch.append((self.sentence_to_onehot(samp1[0]),self.sentence_to_onehot(samp2[0])))
-		return batch
+			batch1.append(self.sentence_to_indices(samp1[0]))
+			batch2.append(self.sentence_to_indices(samp2[0]))
+		return [np.array(batch1),np.array(batch2)]
 
 
 if __name__ == '__main__':
 	p = ProcessData()
 	p.process("train_set.txt")
 
-
+	print (len(p.working_vocabulary))
 	pos = p.get_random_positive_batch(1)[0]
-	pos1 = list(map(lambda oh : p.one_hot_to_word(oh), pos[0]))
-	pos2 = list(map(lambda oh : p.one_hot_to_word(oh), pos[1]))
+	pos1 = map(lambda oh : p.index_to_word(oh), pos[0])
+	pos2 = map(lambda oh : p.index_to_word(oh), pos[1])
 
 	print(pos1)
 	print(pos2)
 
 	pos = p.get_random_negative_batch(1)[0]
-	pos1 = list(map(lambda oh : p.one_hot_to_word(oh), pos[0]))
-	pos2 = list(map(lambda oh : p.one_hot_to_word(oh), pos[1]))
+	pos1 = map(lambda oh : p.index_to_word(oh), pos[0])
+	pos2 = map(lambda oh : p.index_to_word(oh), pos[1])
 
 	print(pos1)
 	print(pos2)
