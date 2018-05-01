@@ -93,7 +93,7 @@ class ProcessData:
 	#string to list of indices in working vocab, length is 15 with padding
 	def sentence_to_indices(self, sentence):
 		arr = sentence.split()
-		indices = map(lambda w : self.word_to_index(w), arr)
+		indices = list(map(lambda w : self.word_to_index(w), arr))
 		if len(indices) < 15:
 			indices = indices + [self.word_to_index("*PAD*")]*(15-len(indices))
 		return indices
