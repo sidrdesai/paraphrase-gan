@@ -24,76 +24,74 @@ class GAN():
 
         optimizer = Adam(0.0002, 0.5)
 
+        # Define encoder and decoder layers
+        # 
+        # These will be trained as an autoencoder, but
+        # they will be used by both the generator and
+        # the discriminator. Defining them separately
+        # makes the total number of weights to train
+        # much smaller.
+
+        s1 = Input(shape=(self.sentence_length,),name='s1')
+        s2 = Input(shape=(self.sentence_length,),name='s2')
+        self.encoder = Model(s1,
+            Embedding(output_dim=self.embedding_vector_length,
+                input_dim=self.vocabulary_size,
+                input_length=self.sentence_length)(s1))
+        print(" === ENCODER ===")
+        self.encoder.summary()
+
+        em1 = Input(shape=(self.sentence_length,
+            self.embedding_vector_length,))
+        self.decoder = Model(em1,
+            Dense(self.vocabulary_size,
+                activation='softmax')(em1))
+        print(" === DECODER ===")
+        self.decoder.summary()
+
+        self.autoencoder = Model(s1,self.decoder(self.encoder(s1)))
+        print(" === AUTOENCODER ===")
+        self.autoencoder.summary()
+        #TODO self.autoencoder.compile(
+
         # Build and compile the discriminator
-        self.discriminator = self.build_discriminator()
+
+        em2 = Input(shape=(self.sentence_length,
+            self.embedding_vector_length,))
+        dis = concatenate([em1,em2])
+        dis = LSTM(self.latent_dimension)(dis)
+        dis = Dense(1,activation='sigmoid')(dis)
+        dis = Model([em1,em2],dis)
+        self.discriminator = Model([s1,s2],dis([self.encoder(s1),self.encoder(s2)]))
+        print(" === DISCRIMINATOR ===")
+        self.discriminator.summary()
         self.discriminator.compile(loss='binary_crossentropy', 
             optimizer=optimizer,
             metrics=['accuracy'])
 
         # Build and compile the generator
-        self.generator = self.build_generator()
+        embed = self.encoder(s1)
+        gen = concatenate([embed,embed],axis=1)
+        gen = LSTM(self.latent_dimension,return_sequences=True)(gen)
+        gen = LSTM(self.embedding_vector_length,return_sequences=True)(gen)
+        gen = Lambda(lambda s: s[:,15:,:])(gen)
+        gen = Model(s1,gen)
+        self.generator = Model(s1,self.decoder(gen(s1)))
+        print(" === GENERATOR ===")
+        self.generator.summary()
         self.generator.compile(loss='binary_crossentropy', optimizer=optimizer)
 
-        # The generator takes s1 as input and generated s2
-        s1 = Input(shape=(self.sentence_length,))
-        s2 = self.generator(s1)
-
         # For the combined model we will only train the generator
-        self.discriminator.trainable = False
+        dis.trainable = False
 
         # The valid takes generated images as input and determines validity
-        valid = self.discriminator([s1,s2])
+        valid = dis([self.encoder(s1),gen(s1)])
 #
-#        # The combined model  (stacked generator and discriminator) takes
-#        # noise as input => generates images => determines validity 
+#        # The combined model  (stacked generator and discriminator)
         self.combined = Model(s1, valid)
+        print(" === COMBINED ===")
+        self.combined.summary()
         self.combined.compile(loss='binary_crossentropy', optimizer=optimizer)
-
-    def build_generator(self):
-
-        s1 = Input(shape=(self.sentence_length,))
-
-        embed = Embedding(output_dim=self.embedding_vector_length,
-                input_dim=self.vocabulary_size,
-                input_length=self.sentence_length)(s1)
-        x = concatenate([embed,embed],axis=1)
-        x = LSTM(self.latent_dimension,return_sequences=True)(x)
-        x = LSTM(self.embedding_vector_length,return_sequences=True)(x)
-        x = Lambda(lambda s: s[:,15:,:])(x)
-        x = Dense(self.vocabulary_size,activation='softmax')(x)
-        x = Lambda(lambda s: kbe.cast(kbe.argmax(s,axis=-1),'float'))(x)
-
-        model = Model(s1,x)
-        model.summary()
-        
-        return model
-
-
-    def build_discriminator(self):
-        
-        s1 = Input(shape=(self.sentence_length,), name='s1')
-        s2 = Input(shape=(self.sentence_length,), name='s2')
-
-        embed = Embedding(output_dim=self.embedding_vector_length,
-                input_dim=self.vocabulary_size,
-                input_length=self.sentence_length)
-        x = concatenate([embed(s1),embed(s2)])
-        x = LSTM(self.latent_dimension)(x)
-        x = Dense(1,activation='sigmoid')(x)
-
-        model = Model([s1,s2],x)
-        model.summary()
-        
-        return model
-
-    # def load_data(self):
-
-    #     X_train = np.array()
-    #     y_train = np.array()
-    #     X_test = np.array()
-    #     y_test = np.array()
-
-    #     return (X_train, y_train), (X_test, y_test)
 
     def train(self, epochs, batch_size=128, save_interval=50):
 
