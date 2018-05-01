@@ -15,7 +15,7 @@ class GAN():
 
     def __init__(self, train_data, test_data):
         self.sentence_length = 15
-        self.vocabulary_size = 15000
+        self.vocabulary_size = 10000
         self.embedding_vector_length = 300
         self.latent_dimension = 100
 
@@ -35,7 +35,8 @@ class GAN():
         self.generator.compile(loss='binary_crossentropy', optimizer=optimizer)
 
         # The generator takes s1 as input and generated s2
-        s1 = Input(shape=(self.sentence_length,))
+        s1 = Input(shape=(self.sentence_length,
+            self.vocabulary_size,))
         s2 = self.generator(s1)
 
         # For the combined model we will only train the generator
@@ -47,23 +48,26 @@ class GAN():
 #        # The combined model  (stacked generator and discriminator) takes
 #        # noise as input => generates images => determines validity 
         self.combined = Model(s1, valid)
+        print(" === COMBINED ===")
+        self.combined.summary()
         self.combined.compile(loss='binary_crossentropy', optimizer=optimizer)
 
     def build_generator(self):
 
-        s1 = Input(shape=(self.sentence_length,))
+        s1 = Input(shape=(self.sentence_length,
+            self.vocabulary_size,))
 
-        embed = Embedding(output_dim=self.embedding_vector_length,
-                input_dim=self.vocabulary_size,
-                input_length=self.sentence_length)(s1)
+        embed = Dense(self.embedding_vector_length,
+                activation='sigmoid',
+                use_bias=False)(s1)
         x = concatenate([embed,embed],axis=1)
         x = LSTM(self.latent_dimension,return_sequences=True)(x)
         x = LSTM(self.embedding_vector_length,return_sequences=True)(x)
         x = Lambda(lambda s: s[:,15:,:])(x)
         x = Dense(self.vocabulary_size,activation='softmax')(x)
-        x = Lambda(lambda s: kbe.cast(kbe.argmax(s,axis=-1),'float'))(x)
 
         model = Model(s1,x)
+        print(" === GENERATOR ===")
         model.summary()
         
         return model
@@ -71,17 +75,20 @@ class GAN():
 
     def build_discriminator(self):
         
-        s1 = Input(shape=(self.sentence_length,), name='s1')
-        s2 = Input(shape=(self.sentence_length,), name='s2')
+        s1 = Input(shape=(self.sentence_length,
+            self.vocabulary_size,), name='s1')
+        s2 = Input(shape=(self.sentence_length,
+            self.vocabulary_size,), name='s2')
 
-        embed = Embedding(output_dim=self.embedding_vector_length,
-                input_dim=self.vocabulary_size,
-                input_length=self.sentence_length)
+        embed = Dense(self.embedding_vector_length,
+                activation='sigmoid',
+                use_bias=False)
         x = concatenate([embed(s1),embed(s2)])
         x = LSTM(self.latent_dimension)(x)
         x = Dense(1,activation='sigmoid')(x)
 
         model = Model([s1,s2],x)
+        print(" === DISCRIMINATOR ===")
         model.summary()
         
         return model
