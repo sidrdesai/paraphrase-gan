@@ -26,6 +26,7 @@ class GAN():
 
         # Build and compile the discriminator
         self.discriminator = self.build_discriminator()
+        self.discriminator.trainable = False
         self.discriminator.compile(loss='binary_crossentropy', 
             optimizer=optimizer,
             metrics=['accuracy'])
@@ -40,7 +41,7 @@ class GAN():
         s2 = self.generator(s1)
 
         # For the combined model we will only train the generator
-        self.discriminator.trainable = False
+        
 
         # The valid takes generated images as input and determines validity
         valid = self.discriminator([s1,s2])
@@ -63,7 +64,7 @@ class GAN():
         x = concatenate([embed,embed],axis=1)
         x = LSTM(self.latent_dimension,return_sequences=True)(x)
         x = LSTM(self.embedding_vector_length,return_sequences=True)(x)
-        x = Lambda(lambda s: s[:,15:,:])(x)
+        x = Lambda(lambda s: s[:,15:,:], trainable=False)(x)
         x = Dense(self.vocabulary_size,activation='softmax')(x)
 
         model = Model(s1,x)
@@ -93,14 +94,17 @@ class GAN():
         
         return model
 
-    # def load_data(self):
-
-    #     X_train = np.array()
-    #     y_train = np.array()
-    #     X_test = np.array()
-    #     y_test = np.array()
-
-    #     return (X_train, y_train), (X_test, y_test)
+    def test_on_batch(epoch, batch_size):
+        test_sentences = self.test_data.get_random_positive_batch(batch_size)[0]
+        gen_sentences = self.generator.predict(test_sentences)
+        w = open("data/paraphrases_%d.txt" % epoch, 'w')
+        index_sentences = kbe.argmax(gen_sentences,axis = -1)
+        index_sentences = index_sentences.eval()
+        paraphrases = list(map(lambda x : (map(lambda y : self.test_data.index_to_word(y), x)), index_sentences))
+        w.write(list(map(lambda x : (map(lambda y : self.test_data.one_hot_to_word(y), x)), test_sentences)))
+        w.write('\n')
+        w.write(paraphrases)
+        w.close()
 
     def train(self, epochs, batch_size=128, save_interval=50):
 
@@ -135,6 +139,9 @@ class GAN():
 
 
             print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss))
+
+            if epoch % save_interval == 0:
+                self.test_on_batch(epoch, 10)
 
             # Select a random half batch of images
 
