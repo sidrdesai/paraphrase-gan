@@ -10,26 +10,27 @@ from preprocess import ProcessData
 import sys
 
 import numpy as np
+import random
 
 class GAN():
 
     def __init__(self, train_data, test_data):
         self.sentence_length = 15
-        self.vocabulary_size = 10000
         self.embedding_vector_length = 300
         self.latent_dimension = 100
 
         self.train_data = train_data
         self.test_data = test_data
 
+        self.vocabulary_size = len(self.train_data.working_vocabulary) + 2
+
         optimizer = Adam(0.0002, 0.5)
 
         # Build and compile the discriminator
         self.discriminator = self.build_discriminator()
-        self.discriminator.trainable = False
         self.discriminator.compile(loss='binary_crossentropy', 
             optimizer=optimizer,
-            metrics=['accuracy'])
+            metrics=['acc'])
 
         # Build and compile the generator
         self.generator = self.build_generator()
@@ -41,7 +42,7 @@ class GAN():
         s2 = self.generator(s1)
 
         # For the combined model we will only train the generator
-        
+        self.discriminator.trainable = False
 
         # The valid takes generated images as input and determines validity
         valid = self.discriminator([s1,s2])
@@ -94,16 +95,28 @@ class GAN():
         
         return model
 
-    def test_on_batch(epoch, batch_size):
-        test_sentences = self.test_data.get_random_positive_batch(batch_size)[0]
+
+    def test_on_batch(self, epoch, batch_size):
+        # get random sentences from test
+        batch = []
+        for i in range(batch_size):
+            block = random.sample(self.test_data.paraphrase_blocks, 1)
+            samp = random.sample(block[0], 1)
+            batch.append(self.train_data.sentence_to_one_hot(samp[0]))
+
+        test_sentences = np.array(batch)
         gen_sentences = self.generator.predict(test_sentences)
+        index_sentences = np.argmax(gen_sentences,axis = 2)
+        paraphrases = list(map(lambda x : (map(lambda y : self.train_data.index_to_word(y), x)), index_sentences))
+
+        originals = map(lambda x : (map(lambda y : self.train_data.one_hot_to_word(list(y)), x)), test_sentences)
         w = open("data/paraphrases_%d.txt" % epoch, 'w')
-        index_sentences = kbe.argmax(gen_sentences,axis = -1)
-        index_sentences = index_sentences.eval()
-        paraphrases = list(map(lambda x : (map(lambda y : self.test_data.index_to_word(y), x)), index_sentences))
-        w.write(list(map(lambda x : (map(lambda y : self.test_data.one_hot_to_word(y), x)), test_sentences)))
-        w.write('\n')
-        w.write(paraphrases)
+        for i in range(len(originals)):
+            original = originals[i]
+            paraphrase = paraphrases[i]
+            s1 = " ".join(original)
+            s2 = " ".join(paraphrase)
+            w.write(s1 + " | " + s2 + "\n")
         w.close()
 
     def train(self, epochs, batch_size=128, save_interval=50):
@@ -123,12 +136,18 @@ class GAN():
             noise_sentences = self.train_data.get_random_positive_batch(half_batch)[0]
             gen_sentences = self.generator.predict(noise_sentences)
             noise_gen_pairs = [noise_sentences,gen_sentences]
+
             d_loss_real = self.discriminator.train_on_batch(positives, np.ones((half_batch,1)))
             d_loss_fake = self.discriminator.train_on_batch(noise_gen_pairs, np.zeros((half_batch,1)))
+
+            # print (self.discriminator.predict(positives,verbose=1))
+            # print (self.discriminator.predict(noise_gen_pairs,verbose=1))
+            # print(self.discriminator.metrics_names)
+            # print(d_loss_real)
+            # print(d_loss_fake)
             d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
 
-            print('discriminator done')
             # ---------------------
             #  Train Generator
             # ---------------------
@@ -141,7 +160,7 @@ class GAN():
             print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss))
 
             if epoch % save_interval == 0:
-                self.test_on_batch(epoch, 10)
+                self.test_on_batch(epoch, 5)
 
             # Select a random half batch of images
 
@@ -178,8 +197,8 @@ class GAN():
 
 if __name__ == '__main__':
     train_data = ProcessData()
-    train_data.process('train_set.txt')
     test_data = ProcessData()
+    train_data.process('train_set.txt')
     test_data.process('test_set.txt')
 
     gan = GAN(train_data,test_data)
